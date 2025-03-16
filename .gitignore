@@ -1,0 +1,21 @@
+# Quarto output files
+*.html
+*.log
+*.out
+*.pdf
+
+# R and Shiny
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+*.rds
+
+# Quarto `_site/` directory (if you render the dashboard)
+_site/
+
+# My way of dealing with a big folder
+*_files
+
+# Was originally in .gitignore file
+/.quarto/

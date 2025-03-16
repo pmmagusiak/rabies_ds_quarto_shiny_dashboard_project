@@ -1,0 +1,383 @@
+---
+title: "rabies_ds_quarto_shiny_dashboard_project"
+format: dashboard
+server: shiny
+date: 2025-01-23
+---
+
+```{r}
+#| label: install-packages
+#| message: false
+
+# install.packages("tidyverse")
+# install.packages("data.table")
+# install.packages("skimr")
+# install.packages('janitor')
+# install.packages("countrycode")
+# install.packages("DT")
+# install.packages("shiny")
+# install.packages("bslib")
+# install.packages("bsicons")
+# install.packages("rnaturalearth")
+# install.packages("rnaturalearthdata")
+# install.packages("leaflet")
+
+```
+
+```{r}
+#| label: load-packages
+#| context: setup
+#| message: false
+
+library(tidyverse)
+library(data.table)
+library(skimr)
+library(janitor)
+library(countrycode)
+library(DT)
+library(shiny)
+library(bslib)
+library(bsicons)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(leaflet)
+
+```
+
+```{r}
+#| label: load-data
+#| context: setup
+#| message: false
+
+# Importing files into R environment
+
+human_rabies_death <- fread("data/reported_number_of_human_rabies_death.csv")
+
+hdi <- fread("data/human_development_index.csv")
+
+```
+
+```{r,include=FALSE}
+#| label: prep-data
+#| context: setup
+#| message: false
+
+# Using skimr package to summary data tables and overview missing values,
+
+# duplicates and other information, janitor package to help tidying.
+
+# Focusing on human_rabies_death database
+
+# Checking if there are any rows with null values
+
+human_rabies_death |> filter(if_any(everything(), is.null))
+
+# Assessing columns which are useful for my analysis
+
+skim_without_charts(human_rabies_death)
+
+glimpse(human_rabies_death)
+
+human_rabies_death |>
+
+  filter(Value != FactValueNumeric)
+
+human_rabies_death <- human_rabies_death |>
+
+  select(
+
+    ParentLocationCode,
+
+    ParentLocation,
+
+    SpatialDimValueCode,
+
+    Location,
+
+    Period,
+
+    FactValueNumeric
+
+  ) |>
+
+  clean_names()
+
+# Focusing on hdi database
+
+# Checking if there are any rows with null values
+
+hdi |> filter(if_any(everything(), is.null))
+
+# Assessing columns which are useful for my analysis
+
+# This database has multiple columns containing country development indicators
+
+# per year, it is more suitable to pivot them
+
+hdi <- hdi |>
+
+  pivot_longer(
+
+    cols = c(-(1:5), -166, -581),
+
+    names_pattern = "^(.*)(\\(\\d+\\))$",
+
+    names_to = c(".value", "year")
+
+  ) |>
+
+  mutate(year = parse_number(year)) |>
+
+  clean_names()
+
+# I prefer to leave many variables for future analysis, for now I will only
+
+# need HDI columns
+
+hdi_rabies <- hdi |>
+
+  select(1:5, 8, 9, 15, 20) |>
+
+  filter(between(year, 2010, 2021))
+
+# Joining the databases
+
+human_rabies_death |>
+
+  count(period)
+
+human_rabies_death <- human_rabies_death |>
+
+  filter(period != 2022)
+
+# Checking if country names are equivalent
+
+library(countrycode)
+
+human_rabies_death |> count(n_distinct(location)) # this db has 194 countries
+
+hdi_rabies |> count(n_distinct(country)) # this db has 195 countries
+
+human_rabies_death |>
+
+  anti_join(hdi_rabies, join_by(spatial_dim_value_code == iso3))
+
+human_rabies_death_processed <- human_rabies_death |>
+
+  filter(!spatial_dim_value_code %in% c("COK", "NIU")) |>
+
+  mutate(location = countrycode(spatial_dim_value_code, "iso3c", "country.name"))
+
+hdi_rabies_processed <- hdi_rabies |>
+
+  filter(!human_development_groups == "") |>  # Filtering out Somalia
+
+  mutate(human_development_groups = factor(
+
+    human_development_groups,
+
+    levels = c("Low", "Medium", "High", "Very High")
+
+  )) |>
+
+  mutate(country = countrycode(iso3, "iso3c", "country.name"))
+
+hdi_rabies_death_joined <- hdi_rabies_processed |>
+
+  left_join(human_rabies_death_processed,
+
+            join_by(country == location, year == period)) |>
+
+  filter(!is.na(fact_value_numeric))
+
+```
+
+```{r,include=FALSE}
+#| label: country-shapes
+#| context: setup
+#| message: false
+
+world_map_df <- ne_countries(scale = "medium", returnclass = "sf") |> 
+  filter(name != "Antarctica")
+
+world_map_df |> glimpse()
+```
+
+
+# Human
+
+## Sidebar - Human {.sidebar}
+
+```{r}
+sliderInput("year", "Choose a year", 2010, 2021, 2010)
+```
+
+## Main body
+
+### Value boxes
+
+```{r}
+#| label: calculate-values
+percent <- "30%"
+```
+
+```{r}
+value_box(
+  title = "Top country by human rabies deaths",
+  value = textOutput("country"),
+  showcase = bs_icon("map-fill")
+)
+```
+
+```{r}
+value_box(
+  title = "Death count",
+  value = textOutput("death_count"),
+  showcase = bs_icon("person-standing")
+)
+```
+
+```{r}
+value_box(
+  title = "Country contribution to global deaths",
+  value = textOutput("percent"),
+  showcase = bs_icon("percent")
+)
+```
+
+### Row - Map
+
+```{r}
+world_map_df |> 
+  leaflet() |> 
+  addTiles() |> 
+  addPolygons()
+```
+
+
+### Row - Tabsets of plots / data {.tabset}
+
+#### Plots
+
+```{r}
+plotOutput("plot")
+```
+
+#### Data
+
+```{r}
+#| title: Datatable
+datatable(hdi_rabies_death_joined)
+```
+
+```{r}
+#| context: server
+country <- reactive({
+  hdi_rabies_death_joined |> 
+    filter(year == input$year) |> 
+    arrange(desc(fact_value_numeric)) |>
+    slice_head(n = 1) |> 
+    pull(country)
+})
+
+death_count <- reactive({
+  hdi_rabies_death_joined |> 
+    filter(year == input$year) |> 
+    arrange(desc(fact_value_numeric)) |>
+    slice_head(n = 1) |> 
+    pull(fact_value_numeric)
+})
+
+percent_all_deaths <- reactive({
+  hdi_rabies_death_joined |>
+    filter(year == input$year) |>
+    mutate(percent_all_deaths = round(fact_value_numeric / sum(fact_value_numeric) * 100)) |>
+    arrange(desc(fact_value_numeric)) |>
+    slice_head(n = 1) |> 
+    pull(percent_all_deaths)
+})
+
+output$plot <- renderPlot({
+    hdi_rabies_death_joined |>
+      filter(year == input$year) |>
+      arrange(desc(fact_value_numeric)) |>
+      head(5) |>
+      ggplot(aes(country, fact_value_numeric)) +
+      geom_bar(stat = "identity")
+  })
+
+output$country <- renderText({
+  country()
+})
+
+output$death_count <- renderText({
+  death_count()
+})
+
+output$percent <- renderText({
+  paste0(percent_all_deaths(),"%")
+})
+
+```
+
+# Animal
+
+
+<!-- # ``` {r} -->
+
+<!-- # #| title: Plot -->
+
+<!-- # hdi_rabies_death_joined |> -->
+
+<!-- #   filter(!country %in% c("China", "India", "Philippines")) |> -->
+
+<!-- #   ggplot(aes(x = as_factor(year), y = fact_value_numeric)) + -->
+
+<!-- #   geom_boxplot() + -->
+
+<!-- #   coord_flip() + -->
+
+<!-- #   facet_wrap( ~ human_development_groups) + -->
+
+<!-- #   labs( -->
+
+<!-- #     x = "",  -->
+
+<!-- #     y = "Number of deaths",  -->
+
+<!-- #     title = "Distribution of human rabies deaths per year facetted by country development group", -->
+
+<!-- #     subtitle = "Does not contain data from China, India and Philippines") + -->
+
+<!-- #   theme_minimal() -->
+
+<!-- # ``` -->
+
+<!-- # dataset <- reactive({ -->
+
+<!-- #   diamonds[sample(nrow(diamonds), input$sampleSize),] -->
+
+<!-- # }) -->
+
+<!-- # output$data <- renderTable({ -->
+
+<!-- #   dataset() -->
+
+<!-- # }) -->
+
+
+<!-- hdi_rabies_death_joined_plotly <- hdi_rabies_death_joined |> -->
+<!--   filter(year == 2021 & fact_value_numeric > 0) -->
+
+
+<!-- plot_ly( -->
+<!--   hdi_rabies_death_joined_plotly, -->
+<!--   type = 'choropleth', -->
+<!--   locations = hdi_rabies_death_joined_plotly$iso3, -->
+<!--   z = hdi_rabies_death_joined_plotly$fact_value_numeric, -->
+<!--   text = hdi_rabies_death_joined_plotly$country, -->
+<!--   colorscale = "Reds" -->
+<!-- ) |>  -->
+<!--   layout(title = "Human rabies deaths in 2021") |>  -->
+<!--   colorbar(title = "Number of deaths") -->
+
