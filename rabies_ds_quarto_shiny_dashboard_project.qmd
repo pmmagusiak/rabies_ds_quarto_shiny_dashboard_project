@@ -6,24 +6,6 @@ date: 2025-01-23
 ---
 
 ```{r}
-#| label: install-packages
-#| message: false
-
-# install.packages("tidyverse")
-# install.packages("data.table")
-# install.packages("skimr")
-# install.packages('janitor')
-# install.packages("countrycode")
-# install.packages("DT")
-# install.packages("shiny")
-# install.packages("bslib")
-# install.packages("bsicons")
-# install.packages("rnaturalearth")
-# install.packages("rnaturalearthdata")
-# install.packages("leaflet")
-```
-
-```{r}
 #| label: load-packages
 #| context: setup
 #| message: false
@@ -40,6 +22,7 @@ library(bsicons)
 library(rnaturalearth)
 library(rnaturalearthdata)
 library(leaflet)
+library(shinyWidgets)
 ```
 
 ```{r}
@@ -54,9 +37,10 @@ human_rabies_death <- fread("data/reported_number_of_human_rabies_death.csv")
 hdi <- fread("data/human_development_index.csv")
 ```
 
-```{r,include=FALSE}
+```{r}
 #| label: prep-data
 #| context: setup
+#| include: false
 #| message: false
 
 # Using skimr package to summary data tables and overview missing values,
@@ -153,22 +137,23 @@ hdi_rabies_death_joined <- hdi_rabies_processed |>
     human_rabies_death_processed,
     join_by(country == location, year == period)
   ) |>
-  # filter(!is.na(fact_value_numeric)) |>
   select(-undp_developing_regions, -spatial_dim_value_code) |>
   select(1:2, 9:10, 3, 5:8, 4, 11)
 ```
 
-```{r,include=FALSE}
+```{r}
 #| label: country-shapes-prep-data
 #| context: setup
+#| include: false
 #| message: false
 
-# Creating world map df with countries polygons, Antarctica omitted for better viewing experience. Columns not needed removed.
+# Creating world map df with countries polygons, Antarctica omitted for better viewing experience. Columns not needed removed. Correcting country names and filtering out countries without country code and Australia's administrative units.
 
 world_map_df <- ne_countries(scale = "medium", returnclass = "sf") |>
-  filter(name != "Antarctica") |>
+  filter(!name %in% c("Antarctica", "Indian Ocean Ter.", "Ashmore and Cartier Is.")) |>
+  filter(iso_a3_eh != -99) |>
+  mutate(name = countrycode(iso_a3_eh, "iso3c", "country.name")) |>
   select(name, iso_a3_eh, geometry)
-
 
 # Populating world map df with rabies death data, filtering out dependent territories
 
@@ -176,22 +161,44 @@ world_map_rabies_df <- world_map_df |>
   right_join(hdi_rabies_death_joined, join_by(iso_a3_eh == iso3, name == country))
 ```
 
-
 # Human
 
 ## Sidebar - Human {.sidebar}
 
 ```{r}
-sliderInput("year", "Choose a year", 2010, 2021, 2010)
+hdg_choices <- c("Low", "Medium", "High", "Very High")
+
+sliderTextInput(
+  inputId = "year",
+  label = "Choose a year:",
+  choices = c(2010:2021),
+  selected = 2021,
+  grid = TRUE,
+  force_edges = TRUE,
+  width = "98%"
+)
+
+virtualSelectInput(
+  inputId = "hdg",
+  label = "Choose human development groups:",
+  choices = hdg_choices,
+  selected = hdg_choices,
+  multiple = TRUE,
+  width = "100%",
+  dropboxWrapper = "body"
+)
 ```
 
 ## Main body
 
-### Value boxes
+### Value boxes {height=20%}
 
 ```{r}
-#| label: calculate-values
-percent <- "30%"
+value_box(
+  title = "Year",
+  value = textOutput("year"),
+  showcase = bs_icon("calendar")
+)
 ```
 
 ```{r}
@@ -218,31 +225,38 @@ value_box(
 )
 ```
 
-
-### Row - Tabsets of map / plots / data {.tabset}
-
-#### Map
+### Row - Tabsets of map / plots / data {.tabset height=80%}
 
 ```{r}
-#| title: Global burden of human rabies deaths
+#| title: Global burden of human rabies death
+
 leafletOutput("map")
 ```
 
-#### Plots
-
 ```{r}
+#| title: Plot
+
 plotOutput("plot")
 ```
 
-#### Data
-
 ```{r}
 #| title: Human rabies deaths data
+
 datatable(hdi_rabies_death_joined, colnames = c("ISO 3 country code", "Country", "WHO region code", "WHO region", "Human Development Groups", "Year", "Human Development Index (HDI)", "HDI female", "HDI male", "Human Development Index rank (2021)", "Death count"))
 ```
 
 ```{r}
 #| context: server
+
+# Value boxes code
+
+year <- reactive({
+  hdi_rabies_death_joined |>
+    filter(year == input$year) |>
+    slice_head(n = 1) |>
+    pull(year)
+})
+
 country <- reactive({
   hdi_rabies_death_joined |>
     filter(year == input$year) |>
@@ -268,32 +282,8 @@ percent_all_deaths <- reactive({
     pull(percent_all_deaths)
 })
 
-map_filtered <- reactive({
-  world_map_rabies_df |> 
-    filter(year == input$year)
-})
-
-output$map <- renderLeaflet({
-  world_map_rabies_df |> 
-    leaflet() |> 
-    addTiles()
-})
-
-observe({
-  pal <- colorNumeric(palette = "Blues", domain = world_map_rabies_df$fact_value_numeric)
-  
-  leafletProxy("map", data = map_filtered()) |> 
-    clearShapes() |> 
-    addPolygons(color = "black", fillColor = ~ pal(fact_value_numeric), weight = .5, opacity = 1, fillOpacity = .7, label = ~ paste0("Death count: ", fact_value_numeric))
-})
-
-output$plot <- renderPlot({
-  hdi_rabies_death_joined |>
-    filter(year == input$year) |>
-    arrange(desc(fact_value_numeric)) |>
-    head(5) |>
-    ggplot(aes(country, fact_value_numeric)) +
-    geom_bar(stat = "identity")
+output$year <- renderText({
+  year()
 })
 
 output$country <- renderText({
@@ -306,6 +296,40 @@ output$death_count <- renderText({
 
 output$percent <- renderText({
   paste0(percent_all_deaths(), "%")
+})
+
+# Map code
+
+map_filtered <- reactive({
+  subset(world_map_rabies_df, human_development_groups %in% input$hdg) |>
+    filter(year == input$year)
+})
+
+output$map <- renderLeaflet({
+  world_map_rabies_df |>
+    leaflet() |>
+    addTiles() |>
+    setView(0, 20, zoom = 2)
+})
+
+observe({
+  pal <- colorNumeric(palette = "Blues", domain = world_map_rabies_df$fact_value_numeric)
+
+  leafletProxy("map", data = map_filtered()) |>
+    clearShapes() |>
+    addPolygons(color = "black", fillColor = ~ pal(fact_value_numeric), weight = .5, opacity = 1, fillOpacity = .7, label = ~ paste0("Death count: ", fact_value_numeric)) |>
+    setView(0, 20, zoom = 2)
+})
+
+# Plot code
+
+output$plot <- renderPlot({
+  hdi_rabies_death_joined |>
+    filter(year == input$year) |>
+    arrange(desc(fact_value_numeric)) |>
+    head(5) |>
+    ggplot(aes(country, fact_value_numeric)) +
+    geom_bar(stat = "identity")
 })
 ```
 
@@ -353,6 +377,3 @@ output$percent <- renderText({
 <!-- #   dataset() -->
 
 <!-- # }) -->
-
-
-
