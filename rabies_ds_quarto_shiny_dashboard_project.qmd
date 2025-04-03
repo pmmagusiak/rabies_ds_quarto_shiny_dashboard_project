@@ -155,10 +155,18 @@ world_map_df <- ne_countries(scale = "medium", returnclass = "sf") |>
   mutate(name = countrycode(iso_a3_eh, "iso3c", "country.name")) |>
   select(name, iso_a3_eh, geometry)
 
-# Populating world map df with rabies death data, filtering out dependent territories
+# Populating world map df with rabies death data, filtering out dependent territories, creating new categorical variable for better visualisation
 
 world_map_rabies_df <- world_map_df |>
-  right_join(hdi_rabies_death_joined, join_by(iso_a3_eh == iso3, name == country))
+  right_join(hdi_rabies_death_joined, join_by(iso_a3_eh == iso3, name == country)) |> 
+  mutate(fact_value_categories = case_when(
+    fact_value_numeric == 0 ~ "0",
+    fact_value_numeric %in% 1:10 ~ "1-10",
+    fact_value_numeric %in% 11:100 ~ "11-100",
+    fact_value_numeric %in% 101:500 ~ "101-500",
+    fact_value_numeric > 500 ~ "500+"
+    )) |> 
+  mutate(fact_value_categories = factor(fact_value_categories, ordered = TRUE, levels = c("0", "1-10", "11-100", "101-500", "500+")))
 ```
 
 # Human
@@ -308,16 +316,29 @@ map_filtered <- reactive({
 output$map <- renderLeaflet({
   world_map_rabies_df |>
     leaflet() |>
-    addTiles() |>
+    addProviderTiles("CartoDB.Positron")|>
     setView(0, 20, zoom = 2)
 })
 
 observe({
-  pal <- colorNumeric(palette = "Blues", domain = world_map_rabies_df$fact_value_numeric)
+  pal <- colorFactor(palette = c("#FFF4D9", "#FFEB9A", "#FFC94A", "#F26B30", "#960018"), levels = c("0", "1-10", "11-100", "101-500", "500+"))
 
   leafletProxy("map", data = map_filtered()) |>
     clearShapes() |>
-    addPolygons(color = "black", fillColor = ~ pal(fact_value_numeric), weight = .5, opacity = 1, fillOpacity = .7, label = ~ paste0("Death count: ", fact_value_numeric)) |>
+    clearControls() |> 
+    addPolygons(
+      color = "black", 
+      fillColor = ~ pal(fact_value_categories), 
+      weight = .5, 
+      opacity = 1, 
+      fillOpacity = .7,
+      highlightOptions = highlightOptions(
+        weight = 2.5,
+        color = "#666",
+        fillOpacity = .7,
+        bringToFront = TRUE),
+      label = ~ lapply(paste0("<b>", name, "</b>", "<br/>", "Death count: ", fact_value_numeric), htmltools::HTML)) |>
+    addLegend("bottomright", pal = pal, values = ~fact_value_categories, title = "Number of deaths", opacity = 1) |> 
     setView(0, 20, zoom = 2)
 })
 
