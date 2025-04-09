@@ -2,8 +2,24 @@
 title: "rabies_ds_quarto_shiny_dashboard_project"
 format:
   dashboard:
+    nav-buttons: [github]
+    github: https://github.com/pmmagusiak/rabies_ds_quarto_shiny_dashboard_project
+    logo: images/logo.png
+    theme: 
+      - sandstone
+      - style/custom.scss
     expandable: false
 server: shiny
+include-before-body:
+  text: |
+    <script>
+      $(document).ready(function() {
+        var heights= $('.value-box-title').map(function() {
+          return $(this).height();
+        }).get();
+        $('.value-box-title').css('height', Math.max(...heights));
+      })
+    </script>
 date: 2025-01-23
 ---
 
@@ -208,13 +224,21 @@ virtualSelectInput(
 
 ## Main body
 
-### Value boxes {height=20%}
+### Value boxes {height="20%"}
 
 ```{r}
 value_box(
   title = "Year",
   value = textOutput("year"),
-  showcase = bs_icon("calendar")
+  theme = value_box_theme(bg = "#3C5B6F")
+)
+```
+
+```{r}
+value_box(
+  title = "Total deaths",
+  value = textOutput("total"),
+  theme = value_box_theme(bg = "#3C5B6F")
 )
 ```
 
@@ -222,28 +246,27 @@ value_box(
 value_box(
   title = "Top country by human rabies deaths",
   value = textOutput("country"),
-  showcase = bs_icon("map-fill")
+  theme = value_box_theme(bg = "#3C5B6F")
 )
 ```
 
 ```{r}
 value_box(
-  title = "Death count",
+  title = "Top country death count",
   value = textOutput("death_count"),
-  showcase = bs_icon("person-standing")
+  theme = value_box_theme(bg = "#3C5B6F")
 )
 ```
 
 ```{r}
 value_box(
-  title = "Country contribution to global deaths",
+  title = "Top country contribution to global deaths",
   value = textOutput("percent"),
-  showcase = bs_icon("percent")
+  theme = value_box_theme(bg = "#3C5B6F")
 )
 ```
 
-### Row - Tabsets of map / plots / data {.tabset height=80%}
-
+### Row - Tabsets of map / plots / data {.tabset height="80%"}
 ```{r}
 #| title: Global burden of human rabies death
 
@@ -272,6 +295,13 @@ year <- reactive({
     filter(year == input$year) |>
     slice_head(n = 1) |>
     pull(year)
+})
+
+total_deaths <- reactive({
+  hdi_rabies_death_joined |>
+    filter(year == input$year) |>
+    summarise(total_deaths = sum(fact_value_numeric, na.rm = TRUE)) |> 
+    pull(total_deaths)
 })
 
 country <- reactive({
@@ -303,6 +333,10 @@ output$year <- renderText({
   year()
 })
 
+output$total <- renderText({
+  total_deaths()
+})
+
 output$country <- renderText({
   country()
 })
@@ -325,14 +359,18 @@ map_filtered <- reactive({
 output$map <- renderLeaflet({
   world_map_df |>
     leaflet() |>
-    addProviderTiles("CartoDB.Positron") |>
+    addProviderTiles("CartoDB.Positron", options = providerTileOptions(minZoom = 2)) |>
     addPolygons(
       color = "black",
       weight = .5,
       opacity = 1,
       label = ~ lapply(paste0("<b>", name, "</b>", "<br/>", note_brk), htmltools::HTML)
     ) |>
-    setView(0, 20, zoom = 2)
+    setView(0, 20, zoom = 2) |>
+    setMaxBounds(
+      lng1 = -180, lat1 = -60,
+      lng2 = 180,  lat2 = 85
+    )
 })
 
 observe({
@@ -373,7 +411,6 @@ output$plot <- renderPlot({
 ```
 
 # Animal
-
 
 <!-- # ``` {r} -->
 
