@@ -41,6 +41,7 @@ library(rnaturalearth)
 library(rnaturalearthdata)
 library(leaflet)
 library(shinyWidgets)
+library(plotly)
 ```
 
 ```{r}
@@ -194,6 +195,28 @@ world_map_rabies_df <- world_map_df |>
   mutate(fact_value_categories = factor(fact_value_categories, ordered = TRUE, levels = c("0", "1-10", "11-100", "101-500", "500+")))
 ```
 
+```{r}
+#| label: plot-prep-data
+#| context: setup
+#| include: false
+#| message: false
+
+hdi_rabies_death_joined |>
+  group_by(country) |>
+  summarise(sum_of_deaths = sum(fact_value_numeric, na.rm = TRUE)) |>
+  arrange(desc(sum_of_deaths))
+
+# I would say that there is 6 countries that stands out in terms of number of deaths
+
+world_deaths <- hdi_rabies_death_joined |> 
+  group_by(year) |> 
+  summarize(yearly_world_deaths = sum(fact_value_numeric, na.rm = TRUE))
+
+# world deaths variable for the second line plot
+
+```
+
+
 # Human
 
 ## Sidebar - Human {.sidebar}
@@ -231,6 +254,7 @@ value_box(
   title = "Year",
   value = textOutput("year"),
   theme = value_box_theme(bg = "#3C5B6F")
+  # class = "border border-black border-2"
 )
 ```
 
@@ -239,6 +263,7 @@ value_box(
   title = "Total deaths",
   value = textOutput("total"),
   theme = value_box_theme(bg = "#3C5B6F")
+  # class = "border border-black border-2"
 )
 ```
 
@@ -247,6 +272,7 @@ value_box(
   title = "Top country by human rabies deaths",
   value = textOutput("country"),
   theme = value_box_theme(bg = "#3C5B6F")
+  # class = "border border-black border-2"
 )
 ```
 
@@ -255,6 +281,7 @@ value_box(
   title = "Top country death count",
   value = textOutput("death_count"),
   theme = value_box_theme(bg = "#3C5B6F")
+  # class = "border border-black border-2"
 )
 ```
 
@@ -263,20 +290,22 @@ value_box(
   title = "Top country contribution to global deaths",
   value = textOutput("percent"),
   theme = value_box_theme(bg = "#3C5B6F")
+  # class = "border border-black border-2"
 )
 ```
 
 ### Row - Tabsets of map / plots / data {.tabset height="80%"}
+
 ```{r}
-#| title: Global burden of human rabies death
+#| title: Global burden of human rabies deaths
 
 leafletOutput("map")
 ```
 
 ```{r}
-#| title: Plot
+#| title: Rabies Mortality Timeline – Plot
 
-plotOutput("plot")
+plotlyOutput("plot")
 ```
 
 ```{r}
@@ -300,7 +329,7 @@ year <- reactive({
 total_deaths <- reactive({
   hdi_rabies_death_joined |>
     filter(year == input$year) |>
-    summarise(total_deaths = sum(fact_value_numeric, na.rm = TRUE)) |> 
+    summarise(total_deaths = sum(fact_value_numeric, na.rm = TRUE)) |>
     pull(total_deaths)
 })
 
@@ -400,56 +429,30 @@ observe({
 
 # Plot code
 
-output$plot <- renderPlot({
-  hdi_rabies_death_joined |>
-    filter(year == input$year) |>
-    arrange(desc(fact_value_numeric)) |>
-    head(5) |>
-    ggplot(aes(country, fact_value_numeric)) +
-    geom_bar(stat = "identity")
+output$plot <- renderPlotly({
+  rabies_plot <- hdi_rabies_death_joined |>
+  filter(country %in% c("China", "India", "Philippines", "Myanmar (Burma)", "Kenya", "Vietnam")) |>
+  ggplot(aes(x = year, y = fact_value_numeric, color = country)) +
+  geom_line(size = 1) +  
+  geom_line(
+    data = world_deaths,
+    aes(x = year, y = yearly_world_deaths),
+    inherit.aes = FALSE,
+    color = "black",
+    size = 1.2,
+    linetype = "dashed"
+  ) +  
+  labs(
+    x = "Year",
+    y = "Number of deaths",
+    color = "Country",
+    title = "Annual Human Rabies Deaths in High-Burden Countries and Worldwide",
+    subtitle = "Dashed black line indicates global yearly sum"
+  ) +
+    theme_minimal()
+  
+  ggplotly(rabies_plot)
 })
 ```
 
 # Animal
-
-<!-- # ``` {r} -->
-
-<!-- # #| title: Plot -->
-
-<!-- # hdi_rabies_death_joined |> -->
-
-<!-- #   filter(!country %in% c("China", "India", "Philippines")) |> -->
-
-<!-- #   ggplot(aes(x = as_factor(year), y = fact_value_numeric)) + -->
-
-<!-- #   geom_boxplot() + -->
-
-<!-- #   coord_flip() + -->
-
-<!-- #   facet_wrap( ~ human_development_groups) + -->
-
-<!-- #   labs( -->
-
-<!-- #     x = "",  -->
-
-<!-- #     y = "Number of deaths",  -->
-
-<!-- #     title = "Distribution of human rabies deaths per year facetted by country development group", -->
-
-<!-- #     subtitle = "Does not contain data from China, India and Philippines") + -->
-
-<!-- #   theme_minimal() -->
-
-<!-- # ``` -->
-
-<!-- # dataset <- reactive({ -->
-
-<!-- #   diamonds[sample(nrow(diamonds), input$sampleSize),] -->
-
-<!-- # }) -->
-
-<!-- # output$data <- renderTable({ -->
-
-<!-- #   dataset() -->
-
-<!-- # }) -->
