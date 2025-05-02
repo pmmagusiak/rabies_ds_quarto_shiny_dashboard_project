@@ -157,7 +157,7 @@ hdi_rabies_death_joined <- hdi_rabies_processed |>
     join_by(country == location, year == period)
   ) |>
   select(-undp_developing_regions, -spatial_dim_value_code) |>
-  select(1:2, 9:10, 3, 5:8, 4, 11)
+  select(1:2, 9:10, 5:8, 4, 3, 11)
 ```
 
 ```{r}
@@ -345,7 +345,21 @@ plotlyOutput("plot")
 ```{r}
 #| title: Human rabies deaths data
 
-datatable(hdi_rabies_death_joined, colnames = c("ISO 3 country code", "Country", "WHO region code", "WHO region", "Human Development Groups", "Year", "Human Development Index (HDI)", "HDI female", "HDI male", "Human Development Index rank (2021)", "Death count", "Total Deaths", "Label"))
+rowCallback <- c(
+    "function(row, data){",
+    "  for(var i=0; i<data.length; i++){",
+    "    if(data[i] === null){",
+    "      $('td:eq('+i+')', row).html('NA')",
+    "        .css({'color': 'rgb(151,151,151)', 'font-style': 'italic'});",
+    "    }",
+    "  }",
+    "}"  
+  )
+
+hdi_rabies_death_joined |> 
+  select(-13) |> 
+  datatable(colnames = c("ISO 3 country code", "Country", "WHO region code", "WHO region", "Year", "Human Development Index (HDI)", "HDI female", "HDI male", "HDI rank (2021)", "HDI group (2021)", "Death count", "Total deaths"), options = list(rowCallback = JS(rowCallback)))
+
 ```
 
 ```{r}
@@ -497,13 +511,15 @@ output$plot <- renderPlotly({
     color = "Country (Total Deaths)",
     title = "Annual Human Rabies Deaths in Top-6 Highest-Burden Countries and Worldwide",
   ) +
-    scale_color_manual(values = c("Global Yearly Deaths" = "black", "China (9354)" = "#1f77b4",
+  scale_color_manual(values = c("Global Yearly Deaths" = "black", "China (9354)" = "#1f77b4",
     "India (4351)" = "#ff7f0e",
     "Philippines (3014)" = "#2ca02c",
     "Myanmar (Burma) (1318)" = "#d62728",
     "Kenya (1115)" = "#9467bd",
     "Vietnam (1038)" = "#8c564b")) +
-    theme_minimal()
+  scale_x_continuous(n.breaks = 10) +
+  # theme_light()
+  theme_minimal()
   
   ggplotly(ggplot) |> layout(xaxis = list(fixedrange = TRUE), yaxis = list(fixedrange = TRUE)) |> config(modeBarButtonsToRemove = c("zoomIn2d", "zoomOut2d"))
 
