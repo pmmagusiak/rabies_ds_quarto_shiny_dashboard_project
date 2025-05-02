@@ -6,9 +6,26 @@ $link-color: #EFE9D5;
 $hover-color: lighten($link-color, 40%);
 
 /*-- scss:rules --*/
-//.nav-tabs {
-//  margin-left: 0;
-//  margin-right: auto;
-//}
+.flex-inline {
+  display: flex;
+  margin-bottom: 10px;
+  gap: 10px;
+}
+.sidebar-div {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
 
+.callout-div {
+  margin-top: auto;
+}
 
+.callout-note a {
+  color: black;
+  text-decoration: underline;
+
+  &:hover {
+    color: darkgray; 
+  }
+}

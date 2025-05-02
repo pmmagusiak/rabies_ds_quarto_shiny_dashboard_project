@@ -1,14 +1,14 @@
 ---
-title: "rabies_ds_quarto_shiny_dashboard_project"
+title: "Global Patterns of Rabies Mortality"
 format:
   dashboard:
+    expandable: false
     nav-buttons: [github]
     github: https://github.com/pmmagusiak/rabies_ds_quarto_shiny_dashboard_project
     logo: images/logo.png
     theme: 
       - sandstone
       - style/custom.scss
-    expandable: false
 server: shiny
 include-before-body:
   text: |
@@ -190,9 +190,10 @@ world_map_rabies_df <- world_map_df |>
     fact_value_numeric %in% 1:10 ~ "1-10",
     fact_value_numeric %in% 11:100 ~ "11-100",
     fact_value_numeric %in% 101:500 ~ "101-500",
-    fact_value_numeric > 500 ~ "500+"
+    fact_value_numeric > 500 ~ "500+",
+    is.na(fact_value_numeric) ~ "Data unavailable"
   )) |>
-  mutate(fact_value_categories = factor(fact_value_categories, ordered = TRUE, levels = c("0", "1-10", "11-100", "101-500", "500+")))
+  mutate(fact_value_categories = factor(fact_value_categories, ordered = TRUE, levels = c("500+", "101-500", "11-100", "1-10", "0", "Data unavailable")))
 ```
 
 ```{r}
@@ -210,20 +211,29 @@ hdi_rabies_death_joined |>
 
 world_deaths <- hdi_rabies_death_joined |> 
   group_by(year) |> 
-  summarize(yearly_world_deaths = sum(fact_value_numeric, na.rm = TRUE))
+  summarize(global_yearly_deaths = sum(fact_value_numeric, na.rm = TRUE)) |> 
+  mutate(label = "Global Yearly Deaths") |> 
+  mutate(label = factor(label))
 
 # world deaths variable for the second line plot
 
-```
+hdi_rabies_death_joined <- hdi_rabies_death_joined |> 
+  group_by(country) |> 
+  mutate(sum_of_deaths = sum(fact_value_numeric, na.rm = TRUE)) |> 
+  ungroup() |> 
+  mutate(label = paste0(country, " (", sum_of_deaths, ")")) |> 
+  mutate(label = factor(label)) |> 
+  mutate(label = fct_reorder(label, sum_of_deaths, .desc = TRUE))
 
+```
 
 # Human
 
 ## Sidebar - Human {.sidebar}
 
-```{r}
-hdg_choices <- c("Low", "Medium", "High", "Very High")
+::: {.sidebar-div}
 
+```{r}
 sliderTextInput(
   inputId = "year",
   label = "Choose a year:",
@@ -233,10 +243,24 @@ sliderTextInput(
   force_edges = TRUE,
   width = "98%"
 )
+```
+
+::: flex-inline
+```{r}
+actionButton("minus", label = "-", class="btn-sm") 
+```
+
+```{r}
+actionButton("plus", label = "+", class="btn-sm")
+```
+:::
+
+```{r}
+hdg_choices <- c("Low", "Medium", "High", "Very High")
 
 virtualSelectInput(
   inputId = "hdg",
-  label = "Choose human development groups:",
+  label = "Choose Human Development Index group:",
   choices = hdg_choices,
   selected = hdg_choices,
   multiple = TRUE,
@@ -245,16 +269,27 @@ virtualSelectInput(
 )
 ```
 
+::: {.callout-div}
+::: {.callout-note collapse="true"}
+## Data Sources & Limitations
+
+This dashboard presents data on reported human rabies deaths sourced from the [WHO Global Health Observatory](https://www.who.int/data/gho/data/indicators/indicator-details/GHO/reported-number-of-human-rabies-deaths) and Human Development Index (HDI) rankings derived from the [Kaggle HDI dataset](https://www.kaggle.com/datasets/iamsouravbanerjee/human-development-index-dataset), based on the 2021 UN Human Development Report.
+
+**Note:** Rabies death data is severely underreported, particularly in many African countries, due to limited surveillance and reporting systems. As such, the true burden of disease is likely underestimated.
+:::
+:::
+
+:::
+
 ## Main body
 
-### Value boxes {height="20%"}
+### Value boxes {height="19%"}
 
 ```{r}
 value_box(
   title = "Year",
   value = textOutput("year"),
   theme = value_box_theme(bg = "#3C5B6F")
-  # class = "border border-black border-2"
 )
 ```
 
@@ -263,7 +298,6 @@ value_box(
   title = "Total deaths",
   value = textOutput("total"),
   theme = value_box_theme(bg = "#3C5B6F")
-  # class = "border border-black border-2"
 )
 ```
 
@@ -272,7 +306,6 @@ value_box(
   title = "Top country by human rabies deaths",
   value = textOutput("country"),
   theme = value_box_theme(bg = "#3C5B6F")
-  # class = "border border-black border-2"
 )
 ```
 
@@ -281,7 +314,6 @@ value_box(
   title = "Top country death count",
   value = textOutput("death_count"),
   theme = value_box_theme(bg = "#3C5B6F")
-  # class = "border border-black border-2"
 )
 ```
 
@@ -290,11 +322,10 @@ value_box(
   title = "Top country contribution to global deaths",
   value = textOutput("percent"),
   theme = value_box_theme(bg = "#3C5B6F")
-  # class = "border border-black border-2"
 )
 ```
 
-### Row - Tabsets of map / plots / data {.tabset height="80%"}
+### Row - Tabset of map / plot / data {.tabset height="81%"}
 
 ```{r}
 #| title: Global burden of human rabies deaths
@@ -306,16 +337,35 @@ leafletOutput("map")
 #| title: Rabies Mortality Timeline – Plot
 
 plotlyOutput("plot")
+
+# bslib::card(full_screen = TRUE, card_body(plotlyOutput("plot")))  <- This line of code enables expand button
+
 ```
 
 ```{r}
 #| title: Human rabies deaths data
 
-datatable(hdi_rabies_death_joined, colnames = c("ISO 3 country code", "Country", "WHO region code", "WHO region", "Human Development Groups", "Year", "Human Development Index (HDI)", "HDI female", "HDI male", "Human Development Index rank (2021)", "Death count"))
+datatable(hdi_rabies_death_joined, colnames = c("ISO 3 country code", "Country", "WHO region code", "WHO region", "Human Development Groups", "Year", "Human Development Index (HDI)", "HDI female", "HDI male", "Human Development Index rank (2021)", "Death count", "Total Deaths", "Label"))
 ```
 
 ```{r}
 #| context: server
+
+# Slider buttons
+
+observeEvent(input$plus, {
+    new_value <- input$year + 1
+    if (new_value <= 2021) {  
+      updateSliderTextInput(session, "year", selected = new_value)
+    }
+  })
+  
+observeEvent(input$minus, {
+    new_value <- input$year - 1
+    if (new_value >= 2010) {  
+      updateSliderTextInput(session, "year", selected = new_value)
+    }
+  })
 
 # Value boxes code
 
@@ -430,28 +480,33 @@ observe({
 # Plot code
 
 output$plot <- renderPlotly({
-  rabies_plot <- hdi_rabies_death_joined |>
+  ggplot <- hdi_rabies_death_joined |>
   filter(country %in% c("China", "India", "Philippines", "Myanmar (Burma)", "Kenya", "Vietnam")) |>
-  ggplot(aes(x = year, y = fact_value_numeric, color = country)) +
-  geom_line(size = 1) +  
+  ggplot(aes(x = year, y = fact_value_numeric, color = label)) +
+  geom_line(linewidth = 1) +  
   geom_line(
     data = world_deaths,
-    aes(x = year, y = yearly_world_deaths),
+    aes(x = year, y = global_yearly_deaths, color = label),
     inherit.aes = FALSE,
-    color = "black",
-    size = 1.2,
-    linetype = "dashed"
-  ) +  
+    linewidth = 1.2,
+    linetype = 3
+  ) + 
   labs(
     x = "Year",
     y = "Number of deaths",
-    color = "Country",
-    title = "Annual Human Rabies Deaths in High-Burden Countries and Worldwide",
-    subtitle = "Dashed black line indicates global yearly sum"
+    color = "Country (Total Deaths)",
+    title = "Annual Human Rabies Deaths in Top-6 Highest-Burden Countries and Worldwide",
   ) +
+    scale_color_manual(values = c("Global Yearly Deaths" = "black", "China (9354)" = "#1f77b4",
+    "India (4351)" = "#ff7f0e",
+    "Philippines (3014)" = "#2ca02c",
+    "Myanmar (Burma) (1318)" = "#d62728",
+    "Kenya (1115)" = "#9467bd",
+    "Vietnam (1038)" = "#8c564b")) +
     theme_minimal()
   
-  ggplotly(rabies_plot)
+  ggplotly(ggplot) |> layout(xaxis = list(fixedrange = TRUE), yaxis = list(fixedrange = TRUE)) |> config(modeBarButtonsToRemove = c("zoomIn2d", "zoomOut2d"))
+
 })
 ```
 
