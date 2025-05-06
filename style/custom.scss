@@ -21,6 +21,10 @@ $hover-color: lighten($link-color, 40%);
   margin-top: auto;
 }
 
+.callout.callout-style-default .callout-body {
+  font-size: .75rem;
+}
+
 .callout-note a {
   color: black;
   text-decoration: underline;
