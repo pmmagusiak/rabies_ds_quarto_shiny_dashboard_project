@@ -179,10 +179,10 @@ world_map_rabies_df <- world_map_df |>
 #| include: false
 #| message: false
 
-hdi_human_rabies_death_joined |>
-  group_by(country) |>
-  summarise(sum_of_deaths = sum(number_of_deaths, na.rm = TRUE)) |>
-  arrange(desc(sum_of_deaths)) # There is 6 countries that stands out in terms of rabies deaths
+# hdi_human_rabies_death_joined |>
+#   group_by(country) |>
+#   summarise(sum_of_deaths = sum(number_of_deaths, na.rm = TRUE)) |>
+#   arrange(desc(sum_of_deaths)) # There is 6 countries that stands out in terms of rabies deaths
 
 world_deaths <- hdi_human_rabies_death_joined |>
   group_by(year) |>

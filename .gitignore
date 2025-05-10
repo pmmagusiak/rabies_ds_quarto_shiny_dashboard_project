@@ -14,6 +14,9 @@
 # Quarto `_site/` directory (if you render the dashboard)
 _site/
 
+# ignore rsconnect
+rsconnect/
+
 # My way of dealing with a big folder
 *_files
 
